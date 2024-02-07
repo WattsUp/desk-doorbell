@@ -1,9 +1,2 @@
-# Ignore everything
-/*
-
-# Files
-!/*.cpp
-!/.gitignore
-!/.gitmodules
-!/CMakeLists.txt
-!/readme.md
+# Build artifacts
+build
