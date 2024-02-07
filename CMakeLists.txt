@@ -1,12 +1,14 @@
 cmake_minimum_required(VERSION 3.16)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS on)
+
 include(pico-sdk/pico_sdk_init.cmake)
 
 project(DeskDoorbell)
 
 pico_sdk_init()
 
-### Adafruit_NeoPixel library
+# Adafruit_NeoPixel library
 add_library(pico_neopixel INTERFACE)
 
 pico_generate_pio_header(pico_neopixel
@@ -24,7 +26,7 @@ target_include_directories(pico_neopixel INTERFACE
 # Pull in pico libraries that we need
 target_link_libraries(pico_neopixel INTERFACE pico_stdlib hardware_pio pico_malloc pico_mem_ops)
 
-### Actual project
+# Actual project
 add_executable(DeskDoorbell)
 target_sources(DeskDoorbell PRIVATE
     ${CMAKE_SOURCE_DIR}/main.cpp
