@@ -170,7 +170,7 @@ void rainbow(uint16_t frame) {
  * @param frame index of animation frame
  */
 void theatreChase(uint16_t frame) {
-    frame = frame % 3;
+    frame = (frame / 2) % 3;
     for (int i = 0; i < LED_COUNT_MIRROR; ++i) {
         if ((i % 3) == frame) {
             setColorMirror(i, WHITE);
@@ -187,7 +187,7 @@ void theatreChase(uint16_t frame) {
  */
 void theatreChaseRainbow(uint16_t frame) {
     uint32_t firstHue = frame * 0x0400;
-    frame             = frame % 3;
+    frame             = (frame / 2) % 3;
 
     for (int i = 0; i < LED_COUNT_MIRROR; ++i) {
         if ((i % 3) == frame) {
