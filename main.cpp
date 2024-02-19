@@ -2,8 +2,11 @@
 #include <stdio.h>
 
 #include <Adafruit_NeoPixel.hpp>
+#include <cstring>
 #include "hardware/gpio.h"
 #include "hardware/timer.h"
+#include "pico/error.h"
+#include "pico/stdio.h"
 #include "pico/time.h"
 #include "pico/types.h"
 
@@ -21,6 +24,8 @@ constexpr float FRAME_RATE            = 20.0f;
 constexpr uint64_t FRAME_PERIOD_US    = 1e6 / FRAME_RATE;
 constexpr uint64_t DURATION_RING_US   = 5e6;
 constexpr uint64_t DURATION_NOTIFY_US = 15e6;
+
+constexpr size_t BUF_LEN = 16;  // #RGBW = 9 bytes
 
 Adafruit_NeoPixel strip(LED_COUNT, PIN_NEOPIXEL, NEO_GRBW + NEO_KHZ800);
 
@@ -48,6 +53,9 @@ constexpr animation_t ANIMATIONS[] = {
     pulseWhite,
 };
 constexpr size_t N_ANIMATIONS = 4;
+
+uint8_t hexToInt(char c);
+uint32_t parseColor(const char* cmd);
 
 enum class State : uint8_t {
     IDLE   = 0,
@@ -85,12 +93,52 @@ int main() {
     uint16_t current_frame   = 0;
     size_t current_animation = 0;
 
+    char buf[BUF_LEN + 1] = {0};
+    size_t buf_i          = 0;
+
     while (true) {
         // Default is no lights at all
         // If button is pressed, launch a random 5s animation
         // Keep checking serial for commands
-        // #RGB<cr> will change button to that color
+        // #RGBW<cr> will change button to that color
         // !<cr> will start a notification on the mirror
+
+        // Check serial buffer
+        int c = getchar_timeout_us(0);
+        switch (c) {
+            case PICO_ERROR_TIMEOUT:
+                break;
+            case '\n':
+            case '\r': {
+                // End of command check if buffer has a valid command
+                printf("Buffer is: '%s'\n", static_cast<char*>(buf));
+                switch (buf[0]) {
+                    case '#': {
+                        idle_color = parseColor(buf);
+                        printf("idle_color: 0x%08X\n", idle_color);
+                    } break;
+                    case '!': {
+                        state         = State::NOTIFY;
+                        current_frame = 0;
+                        next_timeout  = now + DURATION_NOTIFY_US;
+                        printf("NOTIFY\n");
+                    } break;
+                    default:
+                        break;
+                }
+                buf_i = 0;
+                for (size_t i = 0; i < BUF_LEN; ++i) {
+                    buf[i] = 0;
+                }
+            } break;
+            default: {
+                if (buf_i < BUF_LEN) {
+                    // If buffer has room, add c; else ignore
+                    buf[buf_i] = static_cast<char>(c);
+                    ++buf_i;
+                }
+            } break;
+        }
 
         // Keep a consistant frame rate
         now = time_us_64();
@@ -120,7 +168,7 @@ int main() {
         }
 
         switch (state) {
-            case State::IDLE:
+            case State::IDLE: {
                 // Set idle color on btn
                 for (uint16_t i = 0; i < LED_COUNT_BTN; ++i) {
                     setColorBtn(i, idle_color);
@@ -129,26 +177,116 @@ int main() {
                 for (uint16_t i = 0; i < LED_COUNT_MIRROR; ++i) {
                     setColorMirror(i, 0);
                 }
-                break;
-            case State::RING:
+            } break;
+            case State::RING: {
                 // Set white on btn
                 for (uint16_t i = 0; i < LED_COUNT_BTN; ++i) {
                     setColorBtn(i, strip.Color(0, 0, 0, 255));
                 }
                 // Run animation
                 ANIMATIONS[current_animation](current_frame);
-                break;
-            case State::NOTIFY:
+            } break;
+            case State::NOTIFY: {
                 // Set idle color on btn
                 for (uint16_t i = 0; i < LED_COUNT_BTN; ++i) {
                     setColorBtn(i, idle_color);
                 }
-                break;
+            } break;
         }
         strip.show();
 
         ++current_frame;
     }
+}
+
+/**
+ * Convert hex character to integer
+ *
+ * @param c character to parse
+ * @return uint8_t number [0, 15] or 0xFF if failure
+ */
+uint8_t hexToInt(char c) {
+    if (c >= '0' && c <= '9')
+        return static_cast<uint8_t>(c - '0');
+    if (c >= 'A' && c <= 'F')
+        return static_cast<uint8_t>(c - 'A' + 10);
+    if (c >= 'a' && c <= 'f')
+        return static_cast<uint8_t>(c - 'a' + 10);
+    return 0xFF;
+}
+
+/**
+ * @brief Parse color
+ *
+ * @param buf string buffer of #RGB, #RGBW, #RRGGBB, #RRGGBBWW
+ * @returns NeoPixel color
+ */
+uint32_t parseColor(const char* buf) {
+    // Trim off pound
+    if (buf[0] == '#') {
+        ++buf;
+    }
+    uint8_t r = 0;
+    uint8_t g = 0;
+    uint8_t b = 0;
+    uint8_t w = 0;
+
+    uint8_t t = 0;
+
+    switch (strlen(buf)) {
+        case 4: {
+            // RGBW
+            w = hexToInt(buf[3]);
+        }
+        // Fall through
+        case 3: {
+            // RGB
+            r = hexToInt(buf[0]);
+            g = hexToInt(buf[1]);
+            b = hexToInt(buf[2]);
+
+            // If any failed to parse, return dark
+            if (r == 0xFF || g == 0xFF || b == 0xFF || w == 0xFF)
+                return 0;
+
+            // Expand RGB to RRGGBB
+            r = (r << 4) | r;
+            g = (g << 4) | g;
+            b = (b << 4) | b;
+            w = (w << 4) | w;
+        } break;
+        case 8: {
+            // RRGGBBWW
+            w = hexToInt(buf[6]);
+            t = hexToInt(buf[7]);
+            if (w == 0xFF || t == 0xFF)
+                return 0;
+            w = (w << 4) | t;
+        }
+        // Fall through
+        case 6: {
+            // RRGGBB
+            r = hexToInt(buf[0]);
+            t = hexToInt(buf[1]);
+            if (r == 0xFF || t == 0xFF)
+                return 0;
+            r = (r << 4) | t;
+
+            g = hexToInt(buf[2]);
+            t = hexToInt(buf[3]);
+            if (g == 0xFF || t == 0xFF)
+                return 0;
+            g = (g << 4) | t;
+
+            b = hexToInt(buf[4]);
+            t = hexToInt(buf[5]);
+            if (b == 0xFF || t == 0xFF)
+                return 0;
+            b = (b << 4) | t;
+        } break;
+    }
+
+    return strip.Color(r, g, b, w);
 }
 
 /**
