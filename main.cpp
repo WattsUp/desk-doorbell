@@ -100,12 +100,15 @@ int main() {
     char buf[BUF_LEN + 1] = {0};
     size_t buf_i          = 0;
 
+    bool last_btn = true;
+
     while (true) {
         // Default is no lights at all
         // If button is pressed, launch a random 5s animation
         // Keep checking serial for commands
         // #RGBW<cr> will change button to that color
         // !<cr> will start a notification on the mirror
+        now = time_us_64();
 
         // Check serial buffer
         int c = getchar_timeout_us(0);
@@ -146,12 +149,13 @@ int main() {
         }
 
         // Keep a consistant frame rate
-        now = time_us_64();
         if (now < next_frame) {
             // No interrupts so poll button if not ringing
-            if (state != State::RING && gpio_get(PIN_BTN) == 0) {
+            bool current_btn = gpio_get(PIN_BTN);
+            if (!current_btn && last_btn) {
                 btn_pressed_latched = true;
             }
+            last_btn = current_btn;
             sleep_us(100);
             continue;
         }
