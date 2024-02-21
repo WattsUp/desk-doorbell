@@ -2,6 +2,7 @@
 #include <stdio.h>
 
 #include <Adafruit_NeoPixel.hpp>
+#include <cstdlib>
 #include <cstring>
 #include "hardware/gpio.h"
 #include "hardware/timer.h"
@@ -14,11 +15,12 @@ constexpr uint PIN_LED      = 25;
 constexpr uint PIN_NEOPIXEL = 0;
 constexpr uint PIN_BTN      = 1;
 
-constexpr size_t LED_COUNT_BTN    = 12;
-constexpr size_t LED_COUNT_MIRROR = 24;
-constexpr size_t LED_COUNT        = LED_COUNT_MIRROR + LED_COUNT_BTN;
+constexpr int LED_COUNT_BTN     = 12;
+constexpr int LED_COUNT_MIRROR  = 24;
+constexpr int LED_COUNT         = LED_COUNT_MIRROR + LED_COUNT_BTN;
+constexpr int LED_MIRROR_OFFSET = 8;
 
-constexpr uint8_t BRIGHTNESS = 10;
+constexpr uint8_t BRIGHTNESS = 20;
 
 constexpr float FRAME_RATE            = 20.0f;
 constexpr uint64_t FRAME_PERIOD_US    = 1e6 / FRAME_RATE;
@@ -53,6 +55,8 @@ constexpr animation_t ANIMATIONS[] = {
     pulseWhite,
 };
 constexpr size_t N_ANIMATIONS = 4;
+
+void notification(uint16_t frame);
 
 uint8_t hexToInt(char c);
 uint32_t parseColor(const char* cmd);
@@ -111,17 +115,18 @@ int main() {
             case '\n':
             case '\r': {
                 // End of command check if buffer has a valid command
-                printf("Buffer is: '%s'\n", static_cast<char*>(buf));
+                // printf("Buffer is: '%s'\n", static_cast<char*>(buf));
                 switch (buf[0]) {
                     case '#': {
                         idle_color = parseColor(buf);
-                        printf("idle_color: 0x%08X\n", idle_color);
+                        state      = State::IDLE;
+                        // printf("idle_color: 0x%08X\n", idle_color);
                     } break;
                     case '!': {
                         state         = State::NOTIFY;
                         current_frame = 0;
                         next_timeout  = now + DURATION_NOTIFY_US;
-                        printf("NOTIFY\n");
+                        // printf("NOTIFY\n");
                     } break;
                     default:
                         break;
@@ -191,6 +196,8 @@ int main() {
                 for (uint16_t i = 0; i < LED_COUNT_BTN; ++i) {
                     setColorBtn(i, idle_color);
                 }
+                notification(current_frame);
+
             } break;
         }
         strip.show();
@@ -359,5 +366,71 @@ void pulseWhite(uint16_t frame) {
     uint32_t c = strip.Color(0, 0, 0, strip.gamma8(b));
     for (int i = 0; i < LED_COUNT_MIRROR; ++i) {
         setColorMirror(i, c);
+    }
+}
+
+/**
+ * @brief notification animation
+ *
+ * @param frame index of animation frame
+ */
+void notification(uint16_t frame) {
+    static float pixels[LED_COUNT_MIRROR] = {0.0f};
+    static int x                          = 0;
+    static int v                          = 0;
+    static int prev_led                   = 0;
+    static bool circle_mode               = false;
+
+    if (frame == 0) {
+        x           = 0;
+        v           = 1;
+        prev_led    = LED_MIRROR_OFFSET;
+        circle_mode = false;
+    }
+
+    // Decay LEDS to form a tail
+    for (int i = 0; i < LED_COUNT_MIRROR; ++i) {
+        if (frame == 0)
+            pixels[i] = 0.0f;
+        else
+            pixels[i] *= 0.95f;
+    }
+
+    uint32_t firstHue = frame * 0x0400;
+
+    int prev_x = x;
+    int prev_v = v;
+    x += v;
+
+    v += (prev_x > 0) ? -1 : 1;
+
+    // Align 0 = bottom
+    int current = x * LED_COUNT_MIRROR / 400;
+    if (abs(current) > (LED_COUNT_MIRROR / 2)) {
+        x = -prev_x + prev_v;
+    }
+    current = x * LED_COUNT_MIRROR / 400;
+    current =
+        (current + LED_MIRROR_OFFSET + LED_COUNT_MIRROR) % LED_COUNT_MIRROR;
+    pixels[current] = 1.0f;
+    int delta =
+        (current - prev_led + (LED_COUNT_MIRROR / 2)) % LED_COUNT_MIRROR -
+        (LED_COUNT_MIRROR / 2);
+    for (int i = 0; i < delta; ++i) {
+        pixels[(current - i + LED_COUNT_MIRROR) % LED_COUNT_MIRROR] = 1.0f;
+    }
+    for (int i = 0; i > delta; i--) {
+        pixels[(current - i + LED_COUNT_MIRROR) % LED_COUNT_MIRROR] = 1.0f;
+    }
+    prev_led = current;
+
+    for (int i = 0; i < LED_COUNT_MIRROR; ++i) {
+        if (i == current) {
+            setColorMirror(i, WHITE);
+        } else {
+            uint16_t h = firstHue + (i * 65536L / LED_COUNT_MIRROR);
+            uint8_t v  = (pixels[i] * 255);
+            setColorMirror(i, strip.gamma32(strip.ColorHSV(h, 0xFF, v)));
+        }
     }
 }

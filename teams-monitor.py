@@ -20,6 +20,10 @@ def send_rgb(rgb: str) -> None:
     send(f"#{rgb}\n")
 
 
+def send_notification() -> None:
+    send("!\n")
+
+
 def go_away(_: SysTrayIcon) -> None:
     print("Changing to go away mode")
     send_rgb("FF000000")
@@ -30,6 +34,11 @@ def yall_okay(_: SysTrayIcon) -> None:
     print("Changing to y'all okay mode")
     send_rgb("00FF0000")
     CONFIG["go_away"] = False
+
+
+def notify(_: SysTrayIcon) -> None:
+    print("Sending notification")
+    send_notification()
 
 
 def main() -> None:
@@ -57,16 +66,17 @@ def main() -> None:
     menu_options = (
         ("Go away", None, go_away),
         ("Y'all okay now", None, yall_okay),
+        ("Notify", None, notify),
     )
 
     with SysTrayIcon(None, "Desk doorbell", menu_options) as systray:
         while systray._hwnd is None:
             # Wait for systray to be created
             time.sleep(0.01)
+        yall_okay(systray)
 
         while systray._hwnd is not None:
             time.sleep(1)
-            print("Running")
 
 
 if __name__ == "__main__":
