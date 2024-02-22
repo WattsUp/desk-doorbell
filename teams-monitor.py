@@ -22,8 +22,11 @@ CONFIG = {
 
 
 def send(cmd: str) -> None:
-    with serial.Serial(CONFIG["port"], timeout=1) as s:
-        s.write(cmd.encode())
+    try:
+        with serial.Serial(CONFIG["port"], timeout=1) as s:
+            s.write(cmd.encode())
+    except serial.SerialException:
+        print("Faild to connect to doorbell")
 
 
 def send_rgb(rgb: str) -> None:
