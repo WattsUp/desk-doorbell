@@ -1,10 +1,8 @@
-# Pico Template
+# Desk doorbell
 
-A simple C/C++ template for the Raspberry Pi pico using cmake.
+A attention-getting doorbell for coworkers to let me know they want something and I don't notice.
 
-[CLion](https://www.jetbrains.com/clion/) works great as an IDE.
-
-Was made with help from the [Getting Started guide](https://datasheets.raspberrypi.org/pico/getting_started_with_pico.pdf)
+This repository is a personal project. But you may adapt it if you want.
 
 # Requirements
 ### MacOS
@@ -46,9 +44,5 @@ ninja
 
 Copy the .uf2 file from the `build` directory onto the pico to run
 
-# Serial console (MacOS)
-
-```bash
-ls /dev/tty.*
-screen /dev/tty.usbmodem0000000000001
-```
+# Hardware
+A pi pico with a NO button on pin 1. And two NEOPixel LED rings on pin 0. I have a 24 count on my monitor then a 12 count on the button.
