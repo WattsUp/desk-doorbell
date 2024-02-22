@@ -1,6 +1,10 @@
 #!/bin/python3
 
+from collections.abc import Generator
+import io
+import os
 import time
+from pathlib import Path
 import argparse
 from infi.systray import SysTrayIcon
 import serial
@@ -17,6 +21,7 @@ def send(cmd: str) -> None:
 
 
 def send_rgb(rgb: str) -> None:
+    print(f"Sending RGB: {rgb}")
     send(f"#{rgb}\n")
 
 
@@ -41,6 +46,36 @@ def notify(_: SysTrayIcon) -> None:
     send_notification()
 
 
+def parse_teams_log(lines: list[str]) -> tuple[str | None, bool]:
+    do_notify = False
+    for line in lines[::-1]:
+        if "StatusIndicatorStateService: Added" not in line:
+            continue
+        if "Added NewActivity" in line:
+            do_notify = True
+        elif "Added Available" in line:
+            return ("00FF0000", do_notify)
+        elif "Added Busy" in line:
+            return ("FF000000", do_notify)
+        elif "Added InAMeeting" in line:
+            return ("FF000000", do_notify)
+        elif "Added Away" in line:
+            return ("FFFF0000", do_notify)
+        elif "Added Offline" in line:
+            return ("00000000", do_notify)
+        else:
+            print(f"Unknown line: {line}")
+
+    return (None, do_notify)
+
+
+def follow(file: io.TextIOWrapper) -> Generator[str, None, None]:
+    file.seek(0, os.SEEK_END)
+    while True:
+        line = file.readline()
+        yield line
+
+
 def main() -> None:
     print("Team monitor for desk doorbell")
 
@@ -52,16 +87,8 @@ def main() -> None:
     args = parser.parse_args()
 
     CONFIG["port"] = args.port
-    # Test
-    send_rgb("FF000000")
-    time.sleep(0.5)
-    send_rgb("00FF0000")
-    time.sleep(0.5)
-    send_rgb("0000FF00")
-    time.sleep(0.5)
-    send_rgb("000000FF")
-    time.sleep(0.5)
-    send_rgb("00000000")
+
+    path = Path("~/AppData/Roaming/Microsoft/Teams/logs.txt").expanduser()
 
     menu_options = (
         ("Go away", None, go_away),
@@ -69,14 +96,31 @@ def main() -> None:
         ("Notify", None, notify),
     )
 
-    with SysTrayIcon(None, "Desk doorbell", menu_options) as systray:
-        while systray._hwnd is None:
-            # Wait for systray to be created
-            time.sleep(0.01)
-        yall_okay(systray)
+    with path.open() as file:
+        with SysTrayIcon(None, "Desk doorbell", menu_options) as systray:
+            while systray._hwnd is None:
+                # Wait for systray to be created
+                time.sleep(0.01)
+            yall_okay(systray)
 
-        while systray._hwnd is not None:
-            time.sleep(1)
+            lines = file.readlines()
+            color, do_notify = parse_teams_log(lines)
+            if color:
+                send_rgb(color)
+            if do_notify:
+                send_notification()
+
+            for line in follow(file):
+                if systray._hwnd is None:
+                    return
+                elif not line:
+                    time.sleep(0.1)
+                else:
+                    color, do_notify = parse_teams_log([line])
+                    if color:
+                        send_rgb(color)
+                    if do_notify:
+                        send_notification()
 
 
 if __name__ == "__main__":
