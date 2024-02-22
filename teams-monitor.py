@@ -12,6 +12,7 @@ import serial
 RED = "FF000000"
 GREEN = "00FF0000"
 YELLOW = "FFA00000"
+BLUE = "0000FF00"
 OFF = "00000000"
 
 CONFIG = {
@@ -26,7 +27,7 @@ def send(cmd: str) -> None:
         with serial.Serial(CONFIG["port"], timeout=1) as s:
             s.write(cmd.encode())
     except serial.SerialException:
-        print("Faild to connect to doorbell")
+        print("Failed to connect to doorbell")
 
 
 def send_rgb(rgb: str) -> None:
@@ -37,6 +38,11 @@ def send_rgb(rgb: str) -> None:
 def send_notification() -> None:
     print("Sending notification")
     send("!\n")
+
+
+def go_to_idle() -> None:
+    print("Going to idle")
+    send("I\n")
 
 
 def go_away(_: SysTrayIcon) -> None:
@@ -55,31 +61,40 @@ def notify(_: SysTrayIcon) -> None:
     send_notification()
 
 
-def parse_teams_log(lines: list[str]) -> tuple[str | None, bool]:
-    do_notify = False
+def status_to_color(s: str) -> str | None:
+    if "Available" in s:
+        return GREEN
+    if "Busy" in s:
+        return RED
+    if "InAMeeting" in s:
+        return RED
+    if "OnThePhone" in s:
+        return RED
+    if "Presenting" in s:
+        return RED
+    if "Away" in s:
+        return YELLOW
+    if "BeRightBack" in s:
+        return YELLOW
+    if "Offline" in s:
+        return OFF
+    if "Unknown" not in s:
+        print(f"Unknown line: {s}")
+    return None
+
+
+def parse_teams_log(lines: list[str]) -> tuple[str | None, bool | None]:
+    do_notify: bool | None = None
     for line in lines[::-1]:
+        if "StatusIndicatorStateService: Change status icon from NewActivity" in line:
+            return (status_to_color(line.split(" to ")[1]), False)
+
         if "StatusIndicatorStateService: Added" not in line:
             continue
-        if "Added NewActivity" in line:
+        elif "Added NewActivity" in line:
             do_notify = True
-        elif "Added Available" in line:
-            return (GREEN, do_notify)
-        elif "Added Busy" in line:
-            return (RED, do_notify)
-        elif "Added InAMeeting" in line:
-            return (RED, do_notify)
-        elif "Added OnThePhone" in line:
-            return (RED, do_notify)
-        elif "Added Presenting" in line:
-            return (RED, do_notify)
-        elif "Added Away" in line:
-            return (YELLOW, do_notify)
-        elif "Added BeRightBack" in line:
-            return (YELLOW, do_notify)
-        elif "Added Offline" in line:
-            return (OFF, do_notify)
-        elif "Added Unknown" not in line:
-            print(f"Unknown line: {line}")
+        else:
+            return (status_to_color(line.split("Added")[1]), do_notify)
 
     return (None, do_notify)
 
@@ -123,8 +138,11 @@ def main() -> None:
             if color:
                 CONFIG["color"] = color
                 send_rgb(color)
-            if do_notify:
+            if do_notify is True:
+                send_rgb(BLUE)
                 send_notification()
+            elif do_notify is False:
+                go_to_idle()
 
             for line in follow(file):
                 if systray._hwnd is None:
@@ -137,8 +155,11 @@ def main() -> None:
                         CONFIG["color"] = color
                         if not CONFIG["go_away"]:
                             send_rgb(color)
-                    if do_notify:
+                    if do_notify is True:
+                        send_rgb(BLUE)
                         send_notification()
+                    elif do_notify is False:
+                        go_to_idle()
 
 
 if __name__ == "__main__":

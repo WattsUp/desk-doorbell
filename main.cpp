@@ -120,9 +120,11 @@ int main() {
                 // End of command check if buffer has a valid command
                 // printf("Buffer is: '%s'\n", static_cast<char*>(buf));
                 switch (buf[0]) {
+                    case 'I': {
+                        state = State::IDLE;
+                    } break;
                     case '#': {
                         idle_color = parseColor(buf);
-                        state      = State::IDLE;
                         // printf("idle_color: 0x%08X\n", idle_color);
                     } break;
                     case '!': {
