@@ -35,6 +35,7 @@ def send_rgb(rgb: str) -> None:
 
 
 def send_notification() -> None:
+    print("Sending notification")
     send("!\n")
 
 
@@ -51,7 +52,6 @@ def yall_okay(_: SysTrayIcon) -> None:
 
 
 def notify(_: SysTrayIcon) -> None:
-    print("Sending notification")
     send_notification()
 
 
