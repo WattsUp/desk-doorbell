@@ -9,9 +9,15 @@ import argparse
 from infi.systray import SysTrayIcon
 import serial
 
+RED = "FF000000"
+GREEN = "00FF0000"
+YELLOW = "FFA00000"
+OFF = "00000000"
+
 CONFIG = {
     "port": None,
     "go_away": True,
+    "color": OFF,
 }
 
 
@@ -31,14 +37,14 @@ def send_notification() -> None:
 
 def go_away(_: SysTrayIcon) -> None:
     print("Changing to go away mode")
-    send_rgb("FF000000")
     CONFIG["go_away"] = True
+    send_rgb(RED)
 
 
 def yall_okay(_: SysTrayIcon) -> None:
     print("Changing to y'all okay mode")
-    send_rgb("00FF0000")
     CONFIG["go_away"] = False
+    send_rgb(CONFIG["color"])
 
 
 def notify(_: SysTrayIcon) -> None:
@@ -54,16 +60,22 @@ def parse_teams_log(lines: list[str]) -> tuple[str | None, bool]:
         if "Added NewActivity" in line:
             do_notify = True
         elif "Added Available" in line:
-            return ("00FF0000", do_notify)
+            return (GREEN, do_notify)
         elif "Added Busy" in line:
-            return ("FF000000", do_notify)
+            return (RED, do_notify)
         elif "Added InAMeeting" in line:
-            return ("FF000000", do_notify)
+            return (RED, do_notify)
+        elif "Added OnThePhone" in line:
+            return (RED, do_notify)
+        elif "Added Presenting" in line:
+            return (RED, do_notify)
         elif "Added Away" in line:
-            return ("FFFF0000", do_notify)
+            return (YELLOW, do_notify)
+        elif "Added BeRightBack" in line:
+            return (YELLOW, do_notify)
         elif "Added Offline" in line:
-            return ("00000000", do_notify)
-        else:
+            return (OFF, do_notify)
+        elif "Added Unknown" not in line:
             print(f"Unknown line: {line}")
 
     return (None, do_notify)
@@ -106,6 +118,7 @@ def main() -> None:
             lines = file.readlines()
             color, do_notify = parse_teams_log(lines)
             if color:
+                CONFIG["color"] = color
                 send_rgb(color)
             if do_notify:
                 send_notification()
@@ -118,7 +131,9 @@ def main() -> None:
                 else:
                     color, do_notify = parse_teams_log([line])
                     if color:
-                        send_rgb(color)
+                        CONFIG["color"] = color
+                        if not CONFIG["go_away"]:
+                            send_rgb(color)
                     if do_notify:
                         send_notification()
 
