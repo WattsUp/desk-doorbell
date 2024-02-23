@@ -1,6 +1,7 @@
 #!/bin/python3
 
 from collections.abc import Generator
+import re
 import io
 import os
 import time
@@ -94,7 +95,8 @@ def parse_teams_log(lines: list[str]) -> tuple[str | None, bool | None]:
         elif "Added NewActivity" in line:
             do_notify = True
         else:
-            return (status_to_color(line.split("Added")[1]), do_notify)
+            word = re.search(r"Added (\w+) ", line).group(1)
+            return (status_to_color(word), do_notify)
 
     return (None, do_notify)
 
