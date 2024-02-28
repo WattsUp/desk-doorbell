@@ -1,6 +1,6 @@
 # IDE files
 .venv*
-.env
+.env*
 
 # Build artifacts
 build
